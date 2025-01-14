@@ -174,18 +174,17 @@ node:internal/child_process:388
                            ^
 Error: Access to this API has been restricted
     at ChildProcess.spawn (node:internal/child_process:388:28)
-    at Object.spawn (node:child_process:723:9)
-    at Object.<anonymous> (/home/index.js:3:14)
-    at Module._compile (node:internal/modules/cjs/loader:1120:14)
-    at Module._extensions..js (node:internal/modules/cjs/loader:1174:10)
-    at Module.load (node:internal/modules/cjs/loader:998:32)
-    at Module._load (node:internal/modules/cjs/loader:839:12)
-    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:81:12)
     at node:internal/main/run_main_module:17:47 {
   code: 'ERR_ACCESS_DENIED',
   permission: 'ChildProcess'
 }
 ```
+
+Unlike `child_process.spawn`, the `child_process.fork` API copies the execution
+arguments from the parent process. This means that if you start Node.js with the
+Permission Model enabled and include the `--allow-child-process` flag, calling
+`child_process.fork()` will propagate all Permission Model flags to the child
+process.
 
 ### `--allow-fs-read`
 
@@ -577,6 +576,17 @@ added:
 Disable the `Object.prototype.__proto__` property. If `mode` is `delete`, the
 property is removed entirely. If `mode` is `throw`, accesses to the
 property throw an exception with the code `ERR_PROTO_ACCESS`.
+
+### `--disable-sigusr1`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+> Stability: 1.2 - Release candidate
+
+Disable the ability of starting a debugging session by sending a
+`SIGUSR1` signal to the process.
 
 ### `--disable-warning=code-or-type`
 
@@ -1459,6 +1469,7 @@ added: v7.6.0
 
 Set the `host:port` to be used when the inspector is activated.
 Useful when activating the inspector by sending the `SIGUSR1` signal.
+Except when [`--disable-sigusr1`][] is passed.
 
 Default host is `127.0.0.1`. If port `0` is specified,
 a random available port will be used.
@@ -3100,6 +3111,7 @@ one is included in the list below.
 * `--conditions`, `-C`
 * `--diagnostic-dir`
 * `--disable-proto`
+* `--disable-sigusr1`
 * `--disable-warning`
 * `--disable-wasm-trap-handler`
 * `--dns-result-order`
@@ -3378,11 +3390,6 @@ easier to instrument applications that call the `child_process.spawn()` family
 of functions. `NODE_V8_COVERAGE` can be set to an empty string, to prevent
 propagation.
 
-### `NO_COLOR=<any>`
-
-[`NO_COLOR`][]  is an alias for `NODE_DISABLE_COLORS`. The value of the
-environment variable is arbitrary.
-
 #### Coverage output
 
 Coverage is output as an array of [ScriptCoverage][] objects on the top-level
@@ -3447,6 +3454,11 @@ and the line lengths of the source file (in the key `lineLengths`).
   }
 }
 ```
+
+### `NO_COLOR=<any>`
+
+[`NO_COLOR`][]  is an alias for `NODE_DISABLE_COLORS`. The value of the
+environment variable is arbitrary.
 
 ### `OPENSSL_CONF=file`
 
@@ -3678,6 +3690,7 @@ node --stack-trace-limit=12 -p -e "Error.stackTraceLimit" # prints 12
 [`--build-snapshot`]: #--build-snapshot
 [`--cpu-prof-dir`]: #--cpu-prof-dir
 [`--diagnostic-dir`]: #--diagnostic-dirdirectory
+[`--disable-sigusr1`]: #--disable-sigusr1
 [`--env-file-if-exists`]: #--env-file-if-existsconfig
 [`--env-file`]: #--env-fileconfig
 [`--experimental-addon-modules`]: #--experimental-addon-modules
