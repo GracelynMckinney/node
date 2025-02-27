@@ -77,20 +77,24 @@ console.log(query.all());
 
 <!-- YAML
 added: v22.5.0
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/56991
+    description: The `path` argument now supports Buffer and URL objects.
 -->
 
 This class represents a single [connection][] to a SQLite database. All APIs
 exposed by this class execute synchronously.
 
-### `new DatabaseSync(location[, options])`
+### `new DatabaseSync(path[, options])`
 
 <!-- YAML
 added: v22.5.0
 -->
 
-* `location` {string} The location of the database. A SQLite database can be
+* `path` {string | Buffer | URL} The path of the database. A SQLite database can be
   stored in a file or completely [in memory][]. To use a file-backed database,
-  the location should be a file path. To use an in-memory database, the location
+  the path should be a file path. To use an in-memory database, the path
   should be the special name `':memory:'`.
 * `options` {Object} Configuration options for the database connection. The
   following options are supported:
@@ -182,11 +186,14 @@ added:
   * `useBigIntArguments` {boolean} If `true`, integer arguments to `function`
     are converted to `BigInt`s. If `false`, integer arguments are passed as
     JavaScript numbers. **Default:** `false`.
-  * `varargs` {boolean} If `true`, `function` can accept a variable number of
-    arguments. If `false`, `function` must be invoked with exactly
-    `function.length` arguments. **Default:** `false`.
+  * `varargs` {boolean} If `true`, `function` may be invoked with any number of
+    arguments (between zero and [`SQLITE_MAX_FUNCTION_ARG`][]). If `false`,
+    `function` must be invoked with exactly `function.length` arguments.
+    **Default:** `false`.
 * `function` {Function} The JavaScript function to call when the SQLite
-  function is invoked.
+  function is invoked. The return value of this function should be a valid
+  SQLite data type: see [Type conversion between JavaScript and SQLite][].
+  The result defaults to `NULL` if the return value is `undefined`.
 
 This method is used to create SQLite user-defined functions. This method is a
 wrapper around [`sqlite3_create_function_v2()`][].
@@ -197,7 +204,7 @@ wrapper around [`sqlite3_create_function_v2()`][].
 added: v22.5.0
 -->
 
-Opens the database specified in the `location` argument of the `DatabaseSync`
+Opens the database specified in the `path` argument of the `DatabaseSync`
 constructor. This method should only be used when the database is not opened via
 the constructor. An exception is thrown if the database is already open.
 
@@ -346,7 +353,9 @@ over hand-crafted SQL strings when handling user input.
 <!-- YAML
 added: v22.5.0
 changes:
-  - version: REPLACEME
+  - version:
+    - v23.7.0
+    - v22.14.0
     pr-url: https://github.com/nodejs/node/pull/56385
     description: Add support for `DataView` and typed array objects for `anonymousParameters`.
 -->
@@ -382,7 +391,9 @@ execution of this prepared statement. This property is a wrapper around
 <!-- YAML
 added: v22.5.0
 changes:
-  - version: REPLACEME
+  - version:
+    - v23.7.0
+    - v22.14.0
     pr-url: https://github.com/nodejs/node/pull/56385
     description: Add support for `DataView` and typed array objects for `anonymousParameters`.
 -->
@@ -408,7 +419,9 @@ added:
   - v23.4.0
   - v22.13.0
 changes:
-  - version: REPLACEME
+  - version:
+    - v23.7.0
+    - v22.14.0
     pr-url: https://github.com/nodejs/node/pull/56385
     description: Add support for `DataView` and typed array objects for `anonymousParameters`.
 -->
@@ -431,7 +444,9 @@ the values in `namedParameters` and `anonymousParameters`.
 <!-- YAML
 added: v22.5.0
 changes:
-  - version: REPLACEME
+  - version:
+    - v23.7.0
+    - v22.14.0
     pr-url: https://github.com/nodejs/node/pull/56385
     description: Add support for `DataView` and typed array objects for `anonymousParameters`.
 -->
@@ -515,13 +530,74 @@ more data types than SQLite, only a subset of JavaScript types are supported.
 Attempting to write an unsupported data type to SQLite will result in an
 exception.
 
-| SQLite    | JavaScript           |
-| --------- | -------------------- |
-| `NULL`    | {null}               |
-| `INTEGER` | {number} or {bigint} |
-| `REAL`    | {number}             |
-| `TEXT`    | {string}             |
-| `BLOB`    | {Uint8Array}         |
+| SQLite    | JavaScript                 |
+| --------- | -------------------------- |
+| `NULL`    | {null}                     |
+| `INTEGER` | {number} or {bigint}       |
+| `REAL`    | {number}                   |
+| `TEXT`    | {string}                   |
+| `BLOB`    | {TypedArray} or {DataView} |
+
+## `sqlite.backup(sourceDb, path[, options])`
+
+<!-- YAML
+added: v23.8.0
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/56991
+    description: The `path` argument now supports Buffer and URL objects.
+-->
+
+* `sourceDb` {DatabaseSync} The database to backup. The source database must be open.
+* `path` {string | Buffer | URL} The path where the backup will be created. If the file already exists,
+  the contents will be overwritten.
+* `options` {Object} Optional configuration for the backup. The
+  following properties are supported:
+  * `source` {string} Name of the source database. This can be `'main'` (the default primary database) or any other
+    database that have been added with [`ATTACH DATABASE`][] **Default:** `'main'`.
+  * `target` {string} Name of the target database. This can be `'main'` (the default primary database) or any other
+    database that have been added with [`ATTACH DATABASE`][] **Default:** `'main'`.
+  * `rate` {number} Number of pages to be transmitted in each batch of the backup. **Default:** `100`.
+  * `progress` {Function} Callback function that will be called with the number of pages copied and the total number of
+    pages.
+* Returns: {Promise} A promise that resolves when the backup is completed and rejects if an error occurs.
+
+This method makes a database backup. This method abstracts the [`sqlite3_backup_init()`][], [`sqlite3_backup_step()`][]
+and [`sqlite3_backup_finish()`][] functions.
+
+The backed-up database can be used normally during the backup process. Mutations coming from the same connection - same
+{DatabaseSync} - object will be reflected in the backup right away. However, mutations from other connections will cause
+the backup process to restart.
+
+```cjs
+const { backup, DatabaseSync } = require('node:sqlite');
+
+(async () => {
+  const sourceDb = new DatabaseSync('source.db');
+  const totalPagesTransferred = await backup(sourceDb, 'backup.db', {
+    rate: 1, // Copy one page at a time.
+    progress: ({ totalPages, remainingPages }) => {
+      console.log('Backup in progress', { totalPages, remainingPages });
+    },
+  });
+
+  console.log('Backup completed', totalPagesTransferred);
+})();
+```
+
+```mjs
+import { backup, DatabaseSync } from 'node:sqlite';
+
+const sourceDb = new DatabaseSync('source.db');
+const totalPagesTransferred = await backup(sourceDb, 'backup.db', {
+  rate: 1, // Copy one page at a time.
+  progress: ({ totalPages, remainingPages }) => {
+    console.log('Backup in progress', { totalPages, remainingPages });
+  },
+});
+
+console.log('Backup completed', totalPagesTransferred);
+```
 
 ## `sqlite.constants`
 
@@ -599,11 +675,16 @@ resolution handler passed to [`database.applyChangeset()`][]. See also
 [Constants Passed To The Conflict Handler]: https://www.sqlite.org/session/c_changeset_conflict.html
 [Constants Returned From The Conflict Handler]: https://www.sqlite.org/session/c_changeset_abort.html
 [SQL injection]: https://en.wikipedia.org/wiki/SQL_injection
+[Type conversion between JavaScript and SQLite]: #type-conversion-between-javascript-and-sqlite
 [`ATTACH DATABASE`]: https://www.sqlite.org/lang_attach.html
 [`PRAGMA foreign_keys`]: https://www.sqlite.org/pragma.html#pragma_foreign_keys
 [`SQLITE_DETERMINISTIC`]: https://www.sqlite.org/c3ref/c_deterministic.html
 [`SQLITE_DIRECTONLY`]: https://www.sqlite.org/c3ref/c_deterministic.html
+[`SQLITE_MAX_FUNCTION_ARG`]: https://www.sqlite.org/limits.html#max_function_arg
 [`database.applyChangeset()`]: #databaseapplychangesetchangeset-options
+[`sqlite3_backup_finish()`]: https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupfinish
+[`sqlite3_backup_init()`]: https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupinit
+[`sqlite3_backup_step()`]: https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupstep
 [`sqlite3_changes64()`]: https://www.sqlite.org/c3ref/changes.html
 [`sqlite3_close_v2()`]: https://www.sqlite.org/c3ref/close.html
 [`sqlite3_create_function_v2()`]: https://www.sqlite.org/c3ref/create_function.html
