@@ -8,9 +8,6 @@ with(this){__filename}
    : ^^^^
    `----
 
-Caused by:
-    failed to parse
-
 SyntaxError: Strict mode code may not include a with statement
 
 Node.js *
@@ -43,7 +40,7 @@ Node.js *
 var ______________________________________________; throw 10
                                                     ^
 10
-(Use `node --trace-uncaught ...` to show where the exception was thrown)
+(Use `* --trace-uncaught ...` to show where the exception was thrown)
 
 Node.js *
 
@@ -51,7 +48,7 @@ Node.js *
 var ______________________________________________; throw 10
                                                     ^
 10
-(Use `node --trace-uncaught ...` to show where the exception was thrown)
+(Use `* --trace-uncaught ...` to show where the exception was thrown)
 
 Node.js *
 done

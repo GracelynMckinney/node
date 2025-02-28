@@ -1088,6 +1088,10 @@ constexpr bool is_uv_error_except_no_entry(int result) {
   return result < 0 && result != UV_ENOENT;
 }
 
+constexpr bool is_uv_error_except_no_entry_dir(int result) {
+  return result < 0 && !(result == UV_ENOENT || result == UV_ENOTDIR);
+}
+
 static void Stat(const FunctionCallbackInfo<Value>& args) {
   Realm* realm = Realm::GetCurrent(args);
   BindingData* binding_data = realm->GetBindingData<BindingData>();
@@ -1121,8 +1125,11 @@ static void Stat(const FunctionCallbackInfo<Value>& args) {
     FS_SYNC_TRACE_BEGIN(stat);
     int result;
     if (do_not_throw_if_no_entry) {
-      result = SyncCallAndThrowIf(
-          is_uv_error_except_no_entry, env, &req_wrap_sync, uv_fs_stat, *path);
+      result = SyncCallAndThrowIf(is_uv_error_except_no_entry_dir,
+                                  env,
+                                  &req_wrap_sync,
+                                  uv_fs_stat,
+                                  *path);
     } else {
       result = SyncCallAndThrowOnError(env, &req_wrap_sync, uv_fs_stat, *path);
     }
@@ -1698,7 +1705,8 @@ static void RmSync(const FunctionCallbackInfo<Value>& args) {
     return env->ThrowErrnoException(EPERM, "rm", message.c_str(), path_c_str);
   } else if (error == std::errc::directory_not_empty) {
     std::string message = "Directory not empty: " + file_path_str;
-    return env->ThrowErrnoException(EACCES, "rm", message.c_str(), path_c_str);
+    return env->ThrowErrnoException(
+        ENOTEMPTY, "rm", message.c_str(), path_c_str);
   } else if (error == std::errc::not_a_directory) {
     std::string message = "Not a directory: " + file_path_str;
     return env->ThrowErrnoException(ENOTDIR, "rm", message.c_str(), path_c_str);
@@ -2482,7 +2490,6 @@ static void WriteString(const FunctionCallbackInfo<Value>& args) {
     }
   } else {  // write(fd, string, pos, enc, undefined, ctx)
     CHECK_EQ(argc, 6);
-    FSReqWrapSync req_wrap_sync;
     FSReqBase::FSReqBuffer stack_buffer;
     if (buf == nullptr) {
       if (!StringBytes::StorageSize(isolate, value, enc).To(&len))
@@ -2496,6 +2503,7 @@ static void WriteString(const FunctionCallbackInfo<Value>& args) {
       buf = *stack_buffer;
     }
     uv_buf_t uvbuf = uv_buf_init(buf, len);
+    FSReqWrapSync req_wrap_sync("write");
     FS_SYNC_TRACE_BEGIN(write);
     int bytesWritten = SyncCall(env, args[5], &req_wrap_sync, "write",
                                 uv_fs_write, fd, &uvbuf, 1, pos);
@@ -3146,21 +3154,8 @@ static void GetFormatOfExtensionlessFile(
 }
 
 #ifdef _WIN32
-std::wstring ConvertToWideString(const std::string& str) {
-  int size_needed = MultiByteToWideChar(
-      CP_UTF8, 0, &str[0], static_cast<int>(str.size()), nullptr, 0);
-  std::wstring wstrTo(size_needed, 0);
-  MultiByteToWideChar(CP_UTF8,
-                      0,
-                      &str[0],
-                      static_cast<int>(str.size()),
-                      &wstrTo[0],
-                      size_needed);
-  return wstrTo;
-}
-
 #define BufferValueToPath(str)                                                 \
-  std::filesystem::path(ConvertToWideString(str.ToString()))
+  std::filesystem::path(ConvertToWideString(str.ToString(), CP_UTF8))
 
 std::string ConvertWideToUTF8(const std::wstring& wstr) {
   if (wstr.empty()) return std::string();
